@@ -1,0 +1,114 @@
+div:focus {
+  border: none;
+  outline: 0;
+}
+
+table {
+  border-collapse: collapse;
+  margin: 0 auto;
+}
+
+tr td {
+  height: 10px;
+  min-width: 10px;
+}
+
+.boss {
+  background-color: black;
+}
+
+.button {
+  background-color: #4CAF50;
+  border-radius: 5pt;
+  border: none;
+  color: white;
+  padding: 15px;
+  text-align: center;
+  font-size: 16px;
+}
+.button:focus {
+  border: none;
+  outline: 0;
+  text-decoration: none;
+}
+
+.center {
+  text-align: center;
+}
+
+.dark {
+  background-color: black;
+}
+
+.flex-container {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+.floor {
+  background-color: white;
+}
+
+.health {
+  background-color: blue;
+}
+
+.monster {
+  background-color: red;
+}
+
+.next {
+  background-color: purple;
+}
+
+.player {
+  background-color: orange;
+}
+
+.popup {
+  background: rgba(0, 0, 0, 0.5);
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin: auto;
+  width: 100%;
+  height: 100%;
+}
+
+.popup-inner {
+  background: white;
+  padding: 20px;
+  position: fixed;
+  left: 25%;
+  right: 25%;
+  top: 25%;
+}
+
+.prop {
+  min-width: 190px;
+}
+
+.subhead {
+  font-size: 16px;
+}
+
+.title {
+  font-size: 24px;
+}
+
+.wall {
+  background-color: #702918;
+  background-image: url("https://www.transparenttextures.com/patterns/white-brick-wall.png");
+}
+
+.weapon {
+  background-color: green;
+}
+
+#app {
+  font-family: 'Oldenburg', sans-serif;
+  padding: 20px 0px;
+}

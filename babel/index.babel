@@ -1,0 +1,785 @@
+// React & Redux libraries setup
+const { Component } = React;
+const { createStore } = Redux;
+const { Provider } = ReactRedux;
+const { connect } = ReactRedux;
+const { combineReducers } = Redux;
+
+let grid;
+let rows = 80;
+let cols = 80;
+
+let rSpot;
+let cSpot;
+
+let startHealth = 106;
+
+/****************
+// ^^^^^^^
+// React & Redux Libraries Setup and global variables
+//
+//
+//
+// createGrid() function for setup
+// 
+*****************/
+
+const createGrid = (level) => {
+  let totalRooms = 0;
+  grid = []; // full grid
+  let rooms = []; // array of top-right corners of rooms, to be connected by arteries
+  for (let i = 0; i < rows; i++) {
+    grid.push([]);
+    for (let j = 0; j < cols; j++) {
+      grid[i][j] = {
+        dark: true,
+        floor: false, // why have both floor and wall? wall for background color, floor for placement of other items
+        health: false, // health square, blue
+        player: false, // player square, orange
+        monster: false, // monster square, red, black
+        next: false, // move to next board, purple
+        weapon: false, // weapon square, yellow
+        wall: true // wall, brick
+      };
+    }
+  }
+  
+  let attempts = (level * 30) + 30; // number of rooms will tend to increase as level goes up
+  for (let i = 0; i < attempts; i++) { // create rooms
+    let row = Math.floor(Math.random() * (rows - 4)) + 4; // 2 cell buffer min all around
+    let col = Math.floor(Math.random() * (cols - 4)) + 4; // 2 cell buffer min all around
+    let hyt = Math.floor(Math.random() * 7) + 5; // rows per room: between 5 and 12
+    let len = Math.floor(Math.random() * 5) + 5; // cols per room: between 5 and 10
+    if (row + hyt > rows - 4 || col + len > cols - 4) { continue; }
+    else if (grid[row][col].floor || grid[row + hyt][col].floor || grid[row][col + len].floor || grid[row + hyt][col + len].floor) { continue; }
+    else {
+      rooms.push({h: row, w: col});
+      for (let j = 0; j < hyt; j++) {
+        for (let k = 0; k < len; k++) {
+          grid[row + j][col + k].wall = false;
+          grid[row + j][col + k].floor = true;
+        }
+      }
+    }
+  }
+  
+  for (let l = 0; l < rooms.length - 1; l++) { // create arteries
+    let minH = Math.min(rooms[l].h, rooms[l + 1].h);
+    let maxH = Math.max(rooms[l].h, rooms[l + 1].h);
+    let minW = Math.min(rooms[l].w, rooms[l + 1].w);
+    let maxW = Math.max(rooms[l].w, rooms[l + 1].w);
+    for (let m = minH; m <= maxH; m++) {
+      grid[m][rooms[l].w].wall = false;
+      grid[m][rooms[l].w].floor = true;
+    }
+    for (let n = minW; n <= maxW; n++) {
+      grid[rooms[l + 1].h][n].wall = false;
+      grid[rooms[l + 1].h][n].floor = true;
+    }
+  }
+  
+  let health = 0; // health generator
+  while (health < 12) {
+    let healthRow = Math.floor(Math.random()*rows);
+    let healthCol = Math.floor(Math.random()*cols);
+    if (grid[healthRow][healthCol].floor) {
+      grid[healthRow][healthCol].health = true;
+      grid[healthRow][healthCol].floor = false;
+      health++;
+    }
+  }
+
+  let monst = 0;
+  let rand = Math.floor(Math.random() * level * 20) + (level * 20); // Level 1: 20 - 40; Level 4: 80 - 160
+  if (level == 4) {
+    while (monst < 1) {
+      let monstRow = Math.floor(Math.random()*rows);
+      let monstCol = Math.floor(Math.random()*cols);
+      if (grid[monstRow][monstCol].floor) {
+        grid[monstRow][monstCol].boss = true;
+        grid[monstRow][monstCol].monster = rand;
+        grid[monstRow][monstCol].floor = false;
+        monst++;
+      }
+    }
+  }
+  else {
+    while (monst < 7) {
+      let monstRow = Math.floor(Math.random()*rows);
+      let monstCol = Math.floor(Math.random()*cols);
+      if (grid[monstRow][monstCol].floor) {
+        grid[monstRow][monstCol].monster = rand;
+        grid[monstRow][monstCol].floor = false;
+        monst++;
+      }
+    }
+  }
+
+  let weapon = 0; // weapon generator
+  while (weapon < 4) {
+    let weaponRow = Math.floor(Math.random()*rows);
+    let weaponCol = Math.floor(Math.random()*cols);
+    if (grid[weaponRow][weaponCol].floor) {
+      grid[weaponRow][weaponCol].weapon = true;
+      grid[weaponRow][weaponCol].floor = false;
+      weapon++;
+    }
+  }
+
+  let next = 0; // next board generator
+  while (next < 1) {
+    let nextRow = Math.floor(Math.random()*rows);
+    let nextCol = Math.floor(Math.random()*cols);
+    if (grid[nextRow][nextCol].floor) {
+      grid[nextRow][nextCol].next = true;
+      grid[nextRow][nextCol].floor = false;
+      next++;
+    }
+  }
+  
+  let play = 0; // player generator
+  while (play < 1) {
+    let playRow = Math.floor(Math.random()*rows);
+    let playCol = Math.floor(Math.random()*cols);
+    if (grid[playRow][playCol].floor) {
+      grid[playRow][playCol].player = true;
+      grid[playRow][playCol].floor = false;
+      rSpot = playRow;
+      cSpot = playCol;
+      play++;
+
+      for (i = rSpot - 4; i <= rSpot + 4; i++){
+        for (j = cSpot - 4; j <= cSpot + 4; j++) {
+          grid[i][j].dark = false;
+        }
+      }
+    }
+  }
+  return grid;
+}
+
+/**********************
+// ^^^^^^^
+// createGrid() function for setup
+//
+//
+//
+// initStates, Reducers, and store
+// 
+**********************/
+
+const initPlayerState = {
+  health: startHealth,
+  level: 1,
+  weapons_numb: 0,
+  weapons: [
+    { weapon: "Knuckles", strength: 7 },
+    { weapon: "Sling shot", strength: 8 },
+    { weapon: "Brass Knuckles", strength: 15 },
+    { weapon: "Stick", strength: 16 },
+    { weapon: "Nunchucks", strength: 17 },
+    { weapon: "Dagger", strength: 18 },
+    { weapon: "Chain", strength: 19 },
+    { weapon: "Bo", strength: 20 },
+    { weapon: "Tomahawk", strength: 21 },
+    { weapon: "Byakko", strength: 23 },
+    { weapon: "Machete", strength: 25 },
+    { weapon: "Axe", strength: 26 },
+    { weapon: "Mace", strength: 28 },
+    { weapon: "Naginata", strength: 30 },
+    { weapon: "Crossbow", strength: 33 },
+    { weapon: "Flamethrower", strength: 40 },
+    { weapon: "Katana Sword", strength: 45 }
+  ]
+};
+
+const playerReducer = (state = initPlayerState, action) => {
+  let newState;
+  switch (action.type) {
+    case "health": // picking up health box or fighting monster
+      newState = {
+        ...state,
+        health: state.health + action.score // action.score could be + or -
+      };
+      return newState;
+      break;
+    case "weapon":
+      newState = { // weapon_numb corresponds to the weapon in the weapons array
+        ...state,
+        weapons_numb: state.weapons_numb + 1
+      };
+      return newState;
+      break;
+    case "LEVEL":
+      newState = {
+        ...state,
+        level: state.level + 1
+      };
+      return newState;
+      break;
+    case "RESTART":
+      newState = {
+        ...state,
+        health: startHealth,
+        level: 1,
+        monster: 1,
+        weapons_numb: 0
+      };
+      return newState;
+      break;
+    default:
+      return state;
+      break;
+  }
+}
+
+const initBoardState = {
+  grid: createGrid(1), // input is the level
+  row: rSpot,
+  col: cSpot,
+};
+
+const boardReducer = (state = initBoardState, action) => {
+  let newState;
+  switch (action.type) {
+    case "ArrowUp":
+      newState = {
+        ...state,
+        row: state.row - 1,
+        grid: action.grid
+      };
+      return newState;
+      break;
+    case "ArrowRight":
+      newState = {
+        ...state,
+        col: state.col + 1,
+        grid: action.grid
+      };
+      return newState;
+      break;
+    case "ArrowDown":
+      newState = {
+        ...state,
+        row: state.row + 1,
+        grid: action.grid
+      };
+      return newState;
+      break;
+    case "ArrowLeft":
+      newState = {
+        ...state,
+        col: state.col - 1,
+        grid: action.grid
+      };
+      return newState;
+      break;
+    case "UPDATE":
+      newState = {
+        ...state,
+        grid: action.grid
+      };
+      return newState;
+      break;
+    case "UPDATE_LOC":
+      newState = {
+        ...state,
+        row: action.row,
+        col: action.col
+      };
+      return newState;
+      break;
+    default:
+      return state;
+      break;
+  }
+}
+
+const combinedReducers = combineReducers({ board: boardReducer, player: playerReducer });
+
+const store = createStore(combinedReducers);
+
+
+/**********************
+// ^^^^^^^
+// initStates, Reducers, and store
+//
+//
+//
+// App
+// 
+**********************/
+
+
+class App extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      darkness: true,
+      monster: false,
+      won: false
+    };
+    this.reset = this.reset.bind(this);
+    this.toggleDarkness = this.toggleDarkness.bind(this);
+  }
+  
+  reset() {
+    this.setState({
+      darkness: true,
+      monsterdead: false, // changes to true when Level 4 monster beaten
+      won: false // in case reset is used after win
+    });
+    let newLevel = createGrid(1);
+    this.props.update(newLevel);
+    this.props.updateLocation(rSpot, cSpot);
+    this.props.restart();
+  }
+  
+  toggleDarkness() {
+    let toggledArray = handleToggle(this.props.board.grid, this.state.darkness, this.props.board.row, this.props.board.col);
+    this.props.update(toggledArray);
+    this.setState({
+      darkness: !this.state.darkness
+    });
+  }
+  
+  onKeyPressed(e) {
+    e.preventDefault();
+    let legal = legalMove(this.props.board.grid, this.props.board.row, this.props.board.col, e.key); // legalMove() checks if it's a legal move
+    if (legal) {
+      let item = checkElements(this.props.board.grid, this.props.board.row, this.props.board.col, e.key)[0]; // checkElements() returns, e.g. ["health"], etc.
+      if (item == "monster") {
+        if (this.props.player.level == 4) {
+          let beatLastMonst = checkLastMonst(this.props.board.grid, this.props.board.row, this.props.board.col, e.key);
+          if (beatLastMonst) { // last monster defeated
+            this.setState({
+              monsterdead: true
+            });
+          }
+        }
+        let arr = handleMonster(this.props.board.grid, this.props.player.weapons[this.props.player.weapons_numb].strength, this.props.board.row, this.props.board.col, e.key, item);
+        this.props.update(arr);
+        
+        this.props.reduceHealth(this.props.player.level);
+      }
+      else if (item == "next") {
+        if (this.props.player.level == 4) {
+          if (this.state.monsterdead) {
+            this.setState({
+              won: true
+            });
+          }
+        }
+        else {
+          let newLevel = createGrid(this.props.player.level + 1);
+          this.props.update(newLevel);
+          this.props.updateLocation(rSpot, cSpot);
+          this.props.levelUp();
+          this.setState({
+            darkness: true // needs to be set to true because grid generation automatically includes darkness
+          });
+        }
+      }
+      else {
+        this.props.move(this.props.board.grid, this.props.board.row, this.props.board.col, e.key, item, this.state.darkness);
+        this.props.addItemScore(item); // currently adding 10 to floor, need to change this
+      }
+    }
+  }
+
+  render() {    
+    return (
+      <div tabIndex="0" onKeyDown={(e) => this.onKeyPressed(e)}>
+        <Title />
+        <Top toggleDarkness={() => this.toggleDarkness()}/>
+        <br/>
+        {this.state.won ? <End result="won" reset={() => this.reset()} /> : null}
+        {this.props.player.health <= 0 ? <End result="lost" reset={() => this.reset()} /> : null}
+        <table>
+          <tbody>{this.props.board.grid.map((row) =>
+            <tr> {row.map((cell) => <Cell cell={cell} />)} </tr> )}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+}
+
+
+const mapAppStateToProps = (state) => {
+  return {
+    board: state.board,
+    player: state.player
+  };
+};
+
+const mapAppDispatchToProps = (dispatch) => {
+  return {
+    addItemScore: (item) => {
+      dispatch(addItemScore(item));
+    },
+    levelUp: () => {
+      dispatch(levelUp());
+    },
+    move: (arr, row, col, dir, item, dark) => {
+      let newArr = movePlayer(arr, row, col, dir, item, dark);
+      dispatch(move(newArr, dir));
+    },
+    reduceHealth: (level) => {
+      let damage = level * -15;
+      dispatch(reduceHealth(damage));
+    },
+    restart: () => {
+      dispatch(restart());
+    },
+    update: (arr) => {
+      dispatch(update(arr));
+    },
+    updateLocation: (row, col) => { // new rSpot, cSpot after reaching next level
+      dispatch(updateLocation(row, col));
+    }
+  };
+}
+
+function addItemScore(item) {
+  return {
+    type: item,
+    score: 10
+  }
+}
+
+function levelUp() {
+  return {
+    type: "LEVEL"
+  }
+}
+
+function move(arr, dir) {
+  return {
+    type: dir,
+    grid: arr
+  };
+}
+
+function reduceHealth(damage) {
+  return {
+    type: "health",
+    score: damage
+  }
+}
+
+function restart() {
+  return {
+    type: "RESTART"
+  }
+}
+
+function update(arr) { // update without moving player (for monster fight or toggleDarkness)
+  return {
+    type: "UPDATE",
+    grid: arr
+  };
+}
+
+function updateLocation(row, col) {
+  return {
+    type: "UPDATE_LOC",
+    row: row,
+    col: col
+  }
+}
+
+App = connect(mapAppStateToProps, mapAppDispatchToProps)(App);
+
+
+/**********************
+// ^^^^^^^
+// App
+//
+//
+//
+// Cell, Title, Top, End
+// 
+**********************/
+
+
+const Cell = (props) => {
+  return (
+    <td className={props.cell.dark ? "dark" : props.cell.wall ? "wall" : props.cell.health ? "health" : props.cell.boss ? "boss" : props.cell.monster ? "monster" : props.cell.weapon ? "weapon" : props.cell.next ? "next" : props.cell.player ? "player" : "floor"}>
+    </td>
+  );
+}
+
+const Title = (props) => {
+  return (
+    <div className="center">
+      <div className="title">
+        ReactJS Roguelike Dungeoncrawler Game
+      </div>
+      <div className="subhead">
+        Kill the monster in Dungeon 4
+      </div>
+      <br/>
+    </div>
+  );
+}
+
+class Top extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      
+    }
+  }
+  
+  render() {
+    return (
+      <div className="flex-container">
+        <div className="prop">Dungeon: { this.props.player.level }</div>
+        <div className="prop">Health: { this.props.player.health > 0 ? this.props.player.health : "0" }</div>
+        <div className="prop">Weapon: { this.props.player.weapons[this.props.player.weapons_numb].weapon }</div>
+        <div className="prop">Damage: { this.props.player.weapons[this.props.player.weapons_numb].strength }</div>
+        <button className="button" onClick={ this.props.toggleDarkness }>Toggle Darkness</button>
+      </div>
+    );
+  }
+}
+
+const mapTopStateToProps = (state) => {
+  return {
+    player: state.player
+  };
+};
+
+const mapTopDispatchToProps = (dispatch) => {
+  return {
+    move: (arr, row, col, dir, item, dark) => {
+      let newArr = movePlayer(arr, row, col, dir, item, dark);
+      dispatch(move(newArr, dir));
+    }
+  };
+}
+
+Top = connect(mapTopStateToProps, mapTopDispatchToProps)(Top);
+
+
+const End = (props) => {
+  return (
+    <div className="popup">
+      <div className="popup-inner center">
+        {props.result == "won" ? "You won! Congratulations!" : "" }
+        {props.result == "lost" ? "You lost. Better luck next time" : "" }
+        <div>
+          <button className="button" onClick={props.reset}>Reset</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/**********************
+// ^^^^^^^
+// Cell, Title, Top, End
+//
+//
+//
+// legalMove(), checkElements(), movePlayer(), handleMonster(), checkLastMonst(), handleToggle()
+// 
+**********************/
+
+const legalMove = (arr, oldRow, oldCol, dir) => {
+  switch (dir) {
+    case "ArrowUp":
+      return (!arr[oldRow - 1][oldCol].wall);
+      break;
+    case "ArrowRight":
+      return (!arr[oldRow][oldCol + 1].wall);
+      break;
+    case "ArrowDown":
+      return (!arr[oldRow + 1][oldCol].wall);
+      break;
+    case "ArrowLeft":
+      return (!arr[oldRow][oldCol - 1].wall);
+      break;
+    default:
+      // return undefined;
+  }
+}
+
+const checkElements = (arr, oldRow, oldCol, dir) => {
+  let keys;
+  let filtered;
+  switch (dir) {
+    case "ArrowUp":
+      keys = Object.keys(arr[oldRow - 1][oldCol]);
+      filtered = keys.filter(key => arr[oldRow - 1][oldCol][key]);
+      return filtered;
+      break;
+    case "ArrowRight":
+      keys = Object.keys(arr[oldRow][oldCol + 1]);
+      filtered = keys.filter(key => arr[oldRow][oldCol + 1][key]);
+      return filtered;
+      break;
+    case "ArrowDown":
+      keys = Object.keys(arr[oldRow + 1][oldCol]);
+      filtered = keys.filter(key => arr[oldRow + 1][oldCol][key]);
+      return filtered;
+      break;
+    case "ArrowLeft":
+      keys = Object.keys(arr[oldRow][oldCol - 1]);
+      filtered = keys.filter(key => arr[oldRow][oldCol - 1][key]);
+      return filtered;
+      break;
+  }
+}
+
+
+const movePlayer = (arr, oldRow, oldCol, dir, item, dark) => {
+  switch (dir) {
+    case "ArrowUp":
+      arr[oldRow][oldCol].floor = true;
+      arr[oldRow][oldCol].player = false;
+      arr[oldRow - 1][oldCol][item] = false;
+      arr[oldRow - 1][oldCol].player = true;
+      if (dark) {
+        for (let i = oldCol - 4; i <= oldCol + 4; i++) {
+          arr[oldRow + 4][i].dark = true;
+          arr[oldRow - 5][i].dark = false;
+        }
+      }
+      return arr;
+      break;
+    case "ArrowRight":
+      arr[oldRow][oldCol].floor = true;
+      arr[oldRow][oldCol].player = false;
+      arr[oldRow][oldCol + 1][item] = false;
+      arr[oldRow][oldCol + 1].player = true;
+      if (dark) {
+        for (let i = oldRow - 4; i <= oldRow + 4; i++) {
+          arr[i][oldCol - 4].dark = true;
+          arr[i][oldCol + 5].dark = false;
+        }
+      }
+      return arr;
+      break;
+    case "ArrowDown":
+      arr[oldRow][oldCol].floor = true;
+      arr[oldRow][oldCol].player = false;
+      arr[oldRow + 1][oldCol][item] = false;
+      arr[oldRow + 1][oldCol].player = true;
+      if (dark) {
+        for (let i = oldCol - 4; i <= oldCol + 4; i++) {
+          arr[oldRow - 4][i].dark = true;
+          arr[oldRow + 5][i].dark = false;
+        }
+      }
+      return arr;
+      break;
+    case "ArrowLeft":
+      arr[oldRow][oldCol].floor = true;
+      arr[oldRow][oldCol].player = false;
+      arr[oldRow][oldCol - 1][item] = false;
+      arr[oldRow][oldCol - 1].player = true;
+      if (dark) {
+        for (let i = oldRow - 4; i <= oldRow + 4; i++) {
+          arr[i][oldCol + 4].dark = true;
+          arr[i][oldCol - 5].dark = false;
+        }
+      }
+      return arr;
+      break;
+  }
+}
+
+const handleMonster = (arr, weap, playerRow, playerCol, dir, item) => {
+  switch (dir) {
+    case "ArrowUp":
+      arr[playerRow - 1][playerCol].monster -= weap; // some math that works
+      if (arr[playerRow - 1][playerCol].monster <= 0) {
+        arr[playerRow - 1][playerCol].monster = false;
+        arr[playerRow - 1][playerCol].floor = true;
+      }
+      return arr;
+      break;
+    case "ArrowRight":
+      arr[playerRow][playerCol + 1].monster -= weap;
+      if (arr[playerRow][playerCol + 1].monster <= 0) {
+        arr[playerRow][playerCol + 1].monster = false;
+        arr[playerRow][playerCol + 1].floor = true;
+      }
+      return arr;
+      break;
+    case "ArrowDown":
+      arr[playerRow + 1][playerCol].monster -= weap;
+      if (arr[playerRow + 1][playerCol].monster <= 0) {
+        arr[playerRow + 1][playerCol].monster = false;
+        arr[playerRow + 1][playerCol].floor = true;
+      }
+      return arr;
+      break;
+    case "ArrowLeft":
+      arr[playerRow][playerCol - 1].monster -= weap;
+      if (arr[playerRow][playerCol - 1].monster <= 0) {
+        arr[playerRow][playerCol - 1].monster = false;
+        arr[playerRow][playerCol - 1].floor = true;
+      }
+      return arr;
+      break;
+  }
+}
+
+const checkLastMonst = (arr, row, col, dir) => {
+  switch (dir) {
+    case "ArrowUp":
+      return (arr[row - 1][col].monster)
+      break;
+    case "ArrowRight":
+      return (arr[row][col + 1].monster)
+      break;
+    case "ArrowDown":
+      return (arr[row + 1][col].monster)
+      break;
+    case "ArrowLeft":
+      return (arr[row][col - 1].monster)
+      break;
+  }
+}
+
+const handleToggle = (arr, dark, row, col) => {
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      arr[i][j].dark = !dark;
+    }
+  }
+  
+  if (!dark) { // if switching from light to dark
+    for (i = row - 4; i <= row + 4; i++) {
+      for (j = col - 4; j <= col + 4; j++) {
+        arr[i][j].dark = false;
+      }
+    }
+  }
+  return arr;
+}
+
+
+/**********************
+// ^^^^^^^
+// legalMove(), checkElements(), movePlayer(), handleMonster(), checkLastMonst(), handleToggle()
+//
+//
+//
+// 
+// 
+**********************/
+
+const app = window.document.getElementById("app");
+  
+
+// Provider wraps our app
+ReactDOM.render(
+  <Provider store={store}>
+    <App />
+  </Provider>,
+    app);
